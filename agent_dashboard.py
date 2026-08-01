@@ -435,27 +435,39 @@ def create_dashboard():
             
             if target_key == 'ceo':
                 def run_router():
-                    set_active(ui_elements['ceo'], "Thinking...")
+                    set_active(ui_elements['ceo'], "Structuring Project...")
                     try:
-                        # APPROVED CHANGE: Intercept using synchronized router function instead of old link function
-                        new_target_key = get_ceo_routing(cmd_text)
+                        # The CEO now returns a JSON array of tasks
+                        project_plan = get_ceo_routing(cmd_text)
                         
-                        if new_target_key in ui_elements and new_target_key != 'ceo':
-                            new_target_name = ui_elements[new_target_key][2].cget("text")
-                            app_state['selected_agent'] = new_target_key
-                            app_state['selected_name'] = new_target_name
+                        set_idle(ui_elements['ceo'])
+                        
+                        # Loop through the array and execute each phase sequentially
+                        for step in project_plan:
+                            new_target_key = step.get("agent", "dev_mgr")
+                            specific_task = step.get("task", cmd_text)
                             
-                            log_to_chat("CEO Router", f"Routing task to: [{new_target_name}]", "#ffaa00")
-                            
-                            set_idle(ui_elements['ceo'])
-                            set_selected(ui_elements[new_target_key])
-                            target_label.config(text=f"Talking to: [{new_target_name}]", fg="#00aaff")
-                            
-                            execute_agent_task(ui_elements, new_target_key, new_target_name, cmd_text)
-                        else:
-                            log_to_chat("CEO Router Error", f"Could not route to unknown category '{new_target_key}'", "red")
-                            target_label.config(text="CEO Error: Could not route task", fg="red")
-                            set_selected(ui_elements['ceo'], "Listening...")
+                            if new_target_key in ui_elements and new_target_key != 'ceo':
+                                new_target_name = ui_elements[new_target_key][2].cget("text")
+                                
+                                # Visually switch to the active worker
+                                app_state['selected_agent'] = new_target_key
+                                app_state['selected_name'] = new_target_name
+                                set_selected(ui_elements[new_target_key])
+                                target_label.config(text=f"Talking to: [{new_target_name}]", fg="#00aaff")
+                                
+                                log_to_chat("CEO Router", f"Executing Phase: [{new_target_name}] -> {specific_task}", "#ffaa00")
+                                
+                                # This executes the specific task and waits for it to finish before looping to the next!
+                                execute_agent_task(ui_elements, new_target_key, new_target_name, specific_task)
+                                
+                                set_idle(ui_elements[new_target_key])
+                            else:
+                                log_to_chat("CEO Router Error", f"Unknown agent '{new_target_key}' requested. Skipping.", "red")
+                                
+                        target_label.config(text="CEO Project Plan Completed.", fg="#00ff00")
+                        set_selected(ui_elements['ceo'], "Listening...")
+                        
                     except Exception as e:
                         log_to_chat("CEO Router Error", str(e), "red")
                         set_selected(ui_elements['ceo'], "Listening...")
@@ -463,9 +475,12 @@ def create_dashboard():
                 threading.Thread(target=run_router, daemon=True).start()
                 
             else:
+                # This ensures you can still talk directly to individual agents if you bypass the CEO!
                 threading.Thread(target=execute_agent_task, args=(ui_elements, target_key, target_name, cmd_text), daemon=True).start()
+
             
             command_entry.delete(1.0, tk.END)
+
 
     send_btn = tk.Button(input_subframe, text="▶ SEND", font=("Courier", 8, "bold"), bg="#00ff00", fg="black", command=on_send_command)
     send_btn.pack(side="left", padx=5)
